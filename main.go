@@ -3,29 +3,22 @@ package main
 import (
 	"fmt"
 	"time"
-	"sync"
 )
 
 func main() {
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-	    defer wg.Done()
-	    process("order")
-	}()
+	c := make(chan string)
+	go process("order", c)
+	for item := range(c) {
+	    fmt.Println("Processed", item)
+	}
 
-	go func() {
-	    defer wg.Done()
-	    process("refund")
-	}()
-	wg.Wait()
-
-	process("cancel")
 }
 
-func process(item string) {
+func process(item string, c chan string) {
 	for i := 1; i <= 5; i++ {
-		fmt.Println("Processed", i, item)
-		time.Sleep(time.Second) // 0.5
+	    fmt.Println("Put the", item)
+	    c <- item
+		time.Sleep(time.Second / 2) // 0.5
 	}
+	close(c)
 }
