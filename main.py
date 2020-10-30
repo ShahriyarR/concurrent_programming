@@ -1,4 +1,5 @@
 import asyncio
+from channels import Chan, Goroutine
 
 
 async def async_generator():
@@ -6,25 +7,20 @@ async def async_generator():
         yield i
 
 
-async def process(item):
-    async for i in async_generator():
-        print("Processed", i, item)
-        await asyncio.sleep(1)
+async def process(item, c):
+    async for _ in async_generator():
+        await c.put(item)
+        print(f"Put the {item}")
+        await asyncio.sleep(0.5)
 
 
 async def main():
-    task1 = asyncio.create_task(process("order"))
-    task2 = asyncio.create_task(process("refund"))
-
-    # One possible way
-    # await task1
-    # await task2
-    # await process("cancel")
-
-    # Second more understandable way
-    tasks = [task1, task2]
-    await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    await process("cancel")
+    c = Chan()
+    Goroutine.go(process("order", c))
+    await asyncio.sleep(0.5)
+    async for item in c:
+        print("Processed", item)
+        await asyncio.sleep(0.5)
 
 
 if __name__ == "__main__":
