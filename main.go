@@ -3,44 +3,75 @@ package main
 import (
 	"fmt"
 	"time"
+	"sync"
 )
 
+type item struct {
+    price int
+    category string
+}
+
 func main() {
-    out1 := make(chan string)
-    out2 := make(chan string)
-    done := make(chan int)
+    c := gen(
+        item{8, "shirt"},
+        item{20, "shoe"},
+        item{24, "shoe"},
+        item{4, "drink"},
+    )
+    c1 := discount(c)
+    c2 := discount(c)
+    out := fanIn(c1, c2)
+    for processed := range out {
+        fmt.Println("Category:", processed.category, "Price:", processed.price)
+    }
+}
 
-    go func(){
-        for i := 1; i <=5; i++ {
-            time.Sleep(time.Second / 2)
-            out1 <- "order processed"
-        }
-        done <- 1
-    }()
 
+func gen(items ...item) <-chan item {
+    out := make(chan item, len(items))
+    for _, i := range items {
+        out <- i
+    }
+    close(out)
+    return out
+}
+
+
+func discount(items <-chan item) <-chan item {
+    out := make(chan item)
     go func() {
-        for i := 1; i <=5; i++ {
-            time.Sleep(time.Second)
-            out2 <- "refund processed"
+        defer close(out)
+        for i := range items {
+            time.Sleep(time.Second / 2)
+            // We have a sale going on
+            // Shoes are half off!
+            if i.category == "shoe" {
+                i.price /= 2
+            }
+            out <- i
         }
-        done <- 1
     }()
+    return out
+}
 
-    for n:=2; n>0;  {
-        select {
-            case msg := <- out1:
-                fmt.Println(msg)
-            case msg := <- out2:
-                fmt.Println(msg)
-            case <-done:
-                n--
+func fanIn(channels ...<-chan item) <-chan item {
+    var wg sync.WaitGroup
+    out := make(chan item)
+    output := func(c <-chan item) {
+        defer wg.Done()
+        for i := range c {
+            out <- i
         }
     }
+    wg.Add(len(channels))
+    for _, c := range channels {
+        go output(c)
+    }
 
-
-//         fmt.Println(<-out1)
-//         fmt.Println(<-out2)
-//     }
-
+    go func() {
+        wg.Wait()
+        close(out)
+    }()
+    return out
 }
 
