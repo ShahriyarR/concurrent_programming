@@ -14,6 +14,9 @@ class Chan:
             return None
         return await self.channel.get()
 
+    def __len__(self):
+        return self.channel.qsize()
+
     def __aiter__(self):
         return self
 
