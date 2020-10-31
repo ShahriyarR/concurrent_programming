@@ -20,6 +20,16 @@ class Chan:
     def __aiter__(self):
         return self
 
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            val = self.channel.get_nowait()
+        except asyncio.QueueEmpty:
+            raise StopIteration
+        return val
+
     async def __anext__(self):
         val = await self.get()
         if val is None:

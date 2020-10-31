@@ -22,7 +22,9 @@ func main() {
     c2 := discount(c)
     out := fanIn(c1, c2)
     for processed := range out {
-        fmt.Println("Category:", processed.category, "Price:", processed.price)
+//         fmt.Println("Category:", processed.category, "Price:", processed.price)
+        fmt.Println(processed)
+
     }
 }
 
@@ -42,7 +44,7 @@ func discount(items <-chan item) <-chan item {
     go func() {
         defer close(out)
         for i := range items {
-            time.Sleep(time.Second / 2)
+            time.Sleep(time.Second)
             // We have a sale going on
             // Shoes are half off!
             if i.category == "shoe" {

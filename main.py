@@ -18,29 +18,22 @@ async def apply_discount(out_channel, items_channel):
     async for i in items_channel:
         if i['category'] == "shoe":
             i['price'] = i['price'] / 2
-        await asyncio.sleep(0.5)
         await out_channel.put(i)
+        await asyncio.sleep(1)
 
 
-async def discount(items_channel):
-    out = Chan()
-    Goroutine.go(apply_discount(out, items_channel))
-    await asyncio.sleep(0.5)
-    return out
+async def discount(out_channel, items_channel):
+    Goroutine.go(apply_discount(out_channel, items_channel))
 
 
 async def process_channel(out_channel, channel):
     async for i in channel:
         await out_channel.put(i)
-        await asyncio.sleep(0.5)
 
 
-async def fan_in(*channels):
-    out = Chan()
+async def fan_in(out_channel, *channels):
     for ch in channels:
-        Goroutine.go(process_channel(out, ch))
-        await asyncio.sleep(0.5)
-    return out
+        Goroutine.go(process_channel(out_channel, ch))
 
 
 async def main():
@@ -48,19 +41,26 @@ async def main():
                   {'price': 20, 'category': 'shoe'},
                   {'price': 24, 'category': 'shoe'},
                   {'price': 4, 'category': 'drink'})
-    c1 = await discount(c)
-    await asyncio.sleep(0.5)
-    c2 = await discount(c)
-    await asyncio.sleep(0.5)
-    print(len(c1))
-    print(len(c2))
-    out = await fan_in(c1, c2)
-    await asyncio.sleep(0.5)
-    print(len(out))
-    async for processed in out:
-        print(f"Category: {processed['category']} Price: {processed['price']}")
-    # await asyncio.sleep(0.5)
 
+    out = Chan()
+    out1 = Chan()
+    out2 = Chan()
+    task1 = asyncio.create_task(discount(out1, c))
+    task2 = asyncio.create_task(discount(out2, c))
+    task3 = asyncio.create_task(fan_in(out, out1, out2))
+    await asyncio.gather(task1, task2)
+    await task3
+
+    print(len(out1))
+    print(len(out2))
+    print(len(out))
+    await process_output(out)
+
+
+async def process_output(channel):
+    async for processed in channel:
+        # print(f"Category: {processed['category']} Price: {processed['price']}")
+        print("-", processed)
 
 if __name__ == "__main__":
     asyncio.run(main())
