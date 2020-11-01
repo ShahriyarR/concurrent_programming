@@ -19,11 +19,13 @@ async def apply_discount(out_channel, items_channel):
         if i['category'] == "shoe":
             i['price'] = i['price'] / 2
         await out_channel.put(i)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
 
 async def discount(out_channel, items_channel):
-    Goroutine.go(apply_discount(out_channel, items_channel))
+    # Goroutine.go(apply_discount(out_channel, items_channel))
+    # await asyncio.sleep(0.5)
+    await apply_discount(out_channel, items_channel)
 
 
 async def process_channel(out_channel, channel):
@@ -33,7 +35,11 @@ async def process_channel(out_channel, channel):
 
 async def fan_in(out_channel, *channels):
     for ch in channels:
-        Goroutine.go(process_channel(out_channel, ch))
+        await process_channel(out_channel, ch)
+        await process_output(out_channel)
+        # TODO enable below to show the difference
+        print(ch)
+        await asyncio.sleep(0.5)
 
 
 async def main():
@@ -45,22 +51,14 @@ async def main():
     out = Chan()
     out1 = Chan()
     out2 = Chan()
-    task1 = asyncio.create_task(discount(out1, c))
-    task2 = asyncio.create_task(discount(out2, c))
-    task3 = asyncio.create_task(fan_in(out, out1, out2))
-    await asyncio.gather(task1, task2)
-    await task3
-
-    print(len(out1))
-    print(len(out2))
-    print(len(out))
-    await process_output(out)
+    await asyncio.gather(discount(out2, c), discount(out1, c))
+    await asyncio.create_task(fan_in(out, out1, out2))
 
 
 async def process_output(channel):
     async for processed in channel:
-        # print(f"Category: {processed['category']} Price: {processed['price']}")
-        print("-", processed)
+        print(f"Category: {processed['category']} Price: {processed['price']}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

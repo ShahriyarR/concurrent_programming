@@ -22,9 +22,7 @@ func main() {
     c2 := discount(c)
     out := fanIn(c1, c2)
     for processed := range out {
-//         fmt.Println("Category:", processed.category, "Price:", processed.price)
-        fmt.Println(processed)
-
+        fmt.Println("Category:", processed.category, "Price:", processed.price)
     }
 }
 
