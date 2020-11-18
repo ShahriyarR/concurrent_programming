@@ -1,77 +1,131 @@
 package main
 
 import (
-	"fmt"
-	"time"
-	"sync"
+    "time"
+    "fmt"
+    "log"
+    "net/http"
+    "errors"
+    "strconv"
+    "io/ioutil"
+    "os"
 )
 
-type item struct {
-    price int
-    category string
+type Download struct {
+    Url string
+    TargetPath string
+    TotalSections int
 }
+
+
 
 func main() {
-    c := gen(
-        item{8, "shirt"},
-        item{20, "shoe"},
-        item{24, "shoe"},
-        item{4, "drink"},
-    )
-    c1 := discount(c)
-    c2 := discount(c)
-    out := fanIn(c1, c2)
-    for processed := range out {
-        fmt.Println("Category:", processed.category, "Price:", processed.price)
+    startTime := time.Now()
+    d := Download {
+        Url: "http://ipv4.download.thinkbroadband.com/5MB.zip",
+        TargetPath: "5MB.zip",
+        TotalSections: 10,
     }
-}
-
-
-func gen(items ...item) <-chan item {
-    out := make(chan item, len(items))
-    for _, i := range items {
-        out <- i
-    }
-    close(out)
-    return out
-}
-
-
-func discount(items <-chan item) <-chan item {
-    out := make(chan item)
-    go func() {
-        defer close(out)
-        for i := range items {
-            time.Sleep(time.Second)
-            // We have a sale going on
-            // Shoes are half off!
-            if i.category == "shoe" {
-                i.price /= 2
-            }
-            out <- i
-        }
-    }()
-    return out
-}
-
-func fanIn(channels ...<-chan item) <-chan item {
-    var wg sync.WaitGroup
-    out := make(chan item)
-    output := func(c <-chan item) {
-        defer wg.Done()
-        for i := range c {
-            out <- i
-        }
-    }
-    wg.Add(len(channels))
-    for _, c := range channels {
-        go output(c)
+    err := d.Do()
+    if err != nil {
+        log.Fatalf("An error occured while downloading the file: %s\n", err)
     }
 
-    go func() {
-        wg.Wait()
-        close(out)
-    }()
-    return out
+    fmt.Printf("Download completed in %v seconds\n", time.Now().Sub(startTime).Seconds())
+
 }
 
+func (d Download) Do() error {
+    fmt.Println("Making connection")
+    r, err := d.getNewRequest("HEAD")
+    if err != nil {
+        return err
+    }
+    resp, err := http.DefaultClient.Do(r)
+    if err != nil {
+        return err
+    }
+    fmt.Printf("Got %v\n", resp.StatusCode)
+
+    if resp.StatusCode > 299 {
+        return errors.New(fmt.Sprintf("Can't process, response is %v", resp.StatusCode))
+    }
+
+    size, err := strconv.Atoi(resp.Header.Get("Content-Length"))
+    if err != nil {
+        return err
+    }
+    fmt.Printf("Size is %v bytes\n", size)
+
+    var sections = make([][2]int, d.TotalSections)
+    eachSize := size / d.TotalSections
+    fmt.Printf("Each size is %v bytes\n", eachSize)
+    // example: if file size is 100 bytes, our section should like:
+	// [[0 10] [11 21] [22 32] [33 43] [44 54] [55 65] [66 76] [77 87] [88 98] [99 99]]
+    fmt.Println(sections)
+
+    for i := range sections {
+        if i == 0 {
+            // starting byte of first section
+            sections[i][0] = 0
+        } else {
+			// starting byte of other sections
+			sections[i][0] = sections[i-1][1] + 1
+		}
+
+		if i < d.TotalSections-1 {
+			// ending byte of other sections
+			sections[i][1] = sections[i][0] + eachSize
+		} else {
+			// ending byte of other sections
+			sections[i][1] = size - 1
+		}
+    }
+
+    fmt.Println(sections)
+
+    for i, s := range sections {
+        d.downloadSection(i, s)
+    }
+
+    return nil
+}
+
+func (d Download) getNewRequest(method string) (*http.Request, error) {
+    r, err := http.NewRequest(
+        method,
+        d.Url,
+        nil)
+
+    if err != nil {
+        return nil, err
+    }
+
+    r.Header.Set("User-Agent", "Silly Download Manager v001")
+    return r, nil
+}
+
+func (d Download) downloadSection(i int, s [2]int) error {
+    r, err := d.getNewRequest("GET")
+    if err != nil {
+        return err
+    }
+
+    r.Header.Set("Range", fmt.Sprintf("bytes=%v-%v", s[0], s[1]))
+    resp, err := http.DefaultClient.Do(r)
+    if err != nil {
+        return err
+    }
+
+    fmt.Printf("Downloaded %v bytes for section %v: %v\n", resp.Header.Get("Content-Length"), i, s)
+    b, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return err
+    }
+
+    err = ioutil.WriteFile(fmt.Sprintf("section-%v.tmp", i), b, os.ModePerm)
+    if err != nil {
+        return err
+    }
+    return nil
+}
