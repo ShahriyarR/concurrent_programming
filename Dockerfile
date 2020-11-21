@@ -3,3 +3,5 @@ FROM python:3.8
 WORKDIR /app
 COPY . .
 RUN pip install requests
+RUN pip install aiohttp
+RUN pip install aiofiles
