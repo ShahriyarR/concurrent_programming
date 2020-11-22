@@ -5,9 +5,9 @@ import aiohttp
 import aiofiles
 
 
-async def do(data: dict):
+async def do(data: dict, session: aiohttp.ClientSession, tasks: list) -> (list, list):
     print("Making connection")
-    response = await get_new_request(method="HEAD", url=data['Url'])
+    response = await get_new_request(method="HEAD", url=data['Url'], session=session)
     print(f"Got {response.status}")
 
     if response.status > 299:
@@ -34,40 +34,52 @@ async def do(data: dict):
 
     print(sections)
     for index, section in enumerate(sections):
-        tasks = [asyncio.create_task(download_section(index, section, data))]
+        tasks.append(asyncio.create_task(download_section(index, section, data, session)))
         # await asyncio.sleep(0.001)
-    await asyncio.gather(*tasks)
+    return sections, tasks
 
 
-async def get_new_request(method: str, url: str, headers: dict = None) -> aiohttp.ClientResponse:
-    if headers is not None:
+async def get_new_request(method: str, url: str,
+                          session: aiohttp.ClientSession, headers: dict = None) -> aiohttp.ClientResponse:
+    if headers:
         headers['User-Agent'] = "Silly Download Manager v001"
-    async with aiohttp.ClientSession() as session:
-        return await session.request(method=method, url=url, headers=headers)
+    return await session.request(method=method, url=url, headers=headers)
 
 
-async def download_section(index: int, section: list, data: dict):
+async def download_section(index: int, section: list,
+                           data: dict, session: aiohttp.ClientSession):
     headers = {'Range': f"bytes={section[0]}-{section[1]}"}
-    resp = await get_new_request(method="GET", url=data['Url'], headers=headers)
+    resp = await get_new_request(method="GET", url=data['Url'],session=session, headers=headers)
     print(f"Downloaded {resp.headers.get('content-length')} bytes "
           f"for section {index}: {section}")
     file_name = f"section-{index}.tmp"
-    # data = await resp.read()
-    # print(data)
-    # await asyncio.sleep(0.1)
-    # f = await aiofiles.open(file_name, 'wb')
-    # await f.write(resp.content.read())
-    # await f.close()
+    data = await resp.content.read()
+    f = await aiofiles.open(file_name, 'wb')
+    await f.write(data)
+    await f.close()
 
 
-async def main():
+def merge_files(target_path: str, sections: list) -> None:
+    with open(target_path, 'wb+') as final_file:
+        for index, section in enumerate(sections):
+            file_name = f"section-{index}.tmp"
+            with open(file_name, 'rb') as section_file:
+                final_file.write(section_file.read())
+
+
+async def main(data: dict, tasks: list):
     start_time = datetime.now().replace(microsecond=0)
+    async with aiohttp.ClientSession() as session:
+        sections, tasks_ = await do(data=data, session=session, tasks=tasks)
+        await asyncio.wait(tasks_)
+    total_seconds = datetime.now().replace(microsecond=0) - start_time
+    print(f"Download completed in {total_seconds.total_seconds()} seconds")
+    return sections
+
+if __name__ == "__main__":
     d = {'Url': "http://ipv4.download.thinkbroadband.com/5MB.zip",
          'TargetPath': "5MB.zip",
          'TotalSections': 10}
-    await do(d)
-    total_seconds = datetime.now().replace(microsecond=0) - start_time
-    print(f"Download completed in {total_seconds.total_seconds()} seconds")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    tasks = []
+    sections = asyncio.run(main(data=d, tasks=tasks))
+    merge_files(d['TargetPath'], sections=sections)
